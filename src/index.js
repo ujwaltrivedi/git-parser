@@ -11,6 +11,8 @@ const minimist = require('minimist')
 const parse = require('url-parse');
 const lineByLine = require('n-readlines');
 const Promise = require('promise');
+const gitpending = require('./gitpending.js');
+const gitreleased = require('./gitreleased.js');
 
 
 
@@ -72,19 +74,39 @@ var updateJSON = function(){
 // should call repo processor 1 at a time
 var x = 0;
 function customAlert(jsonItem, callback) {
-    processRepo(jsonItem.repo, jsonItem.branch, callback);
+	var repoName;
+	getRepoName(jsonItem.repo, (repoNameX)=>{ repoName = repoNameX; });
+    processRepoPromise = processRepo(jsonItem.repo, repoName, jsonItem.branch);
+	processRepoPromise.then(function(result){
+		console.log(result);
+		gitPendingPromise = getLogPendingReviews(repoName, jsonItem.branch);
+		gitReleasedPromise = getLogReleasedReviews(repoName, jsonItem.branch);
+
+		Promise.all([
+			Promise.resolve(gitPendingPromise),
+			Promise.resolve(gitReleasedPromise)
+		]).then(function(values){
+  			callback(values[0], values[1]);
+		});
+
+	}, function(err){
+		console.log(err);
+	});
 }
 
 var loopArray = function(arr) {
-    customAlert(arr[x], function(pendingJson){
+    customAlert(arr[x], function(pendingJson, releasedJson){
         // set x to next item
         x++;
 
 
+		//console.log(pendingJson);
+		//console.log(releasedJson);
+
         theJSON.pending_review[pr_repo_count] = pendingJson;
-		//theJSON.released[rr_repo_count] = releasedJson;
+		theJSON.released[rr_repo_count] = releasedJson;
         pr_repo_count++;
-		//rr_repo_count++;
+		rr_repo_count++;
 
 
         if(x == arr.length){
@@ -97,7 +119,6 @@ var loopArray = function(arr) {
             loopArray(arr);
         }
     });
-
 
 }
 loopArray(jsonContent.repos);
@@ -120,7 +141,7 @@ function getRepoName(repoUrl, callback){
 }
 
 function changeBranch(repoName, repoBranch, callback){
-  console.log(chalk.blue('[Changing] branch for repo '+repoName+' to ['+repoBranch+']'));
+  console.log(chalk.green('[Changing] branch for repo '+repoName+' to ['+repoBranch+']'));
   git(repoName).checkout(repoBranch, (err, update) =>{
 
     callback(repoName, repoBranch);
@@ -130,7 +151,6 @@ function changeBranch(repoName, repoBranch, callback){
 // download repos
 function downloadRepo(repoUrl, repoBranch, repoName){
   return new Promise(function(resolve, reject) {
-
       if (!fs.existsSync(repoName)) {
           //
           getRepoName(repoUrl, (repoPath) => {
@@ -145,143 +165,59 @@ function downloadRepo(repoUrl, repoBranch, repoName){
           });
           //
       }else{resolve(chalk.green('[Repo Exists] '+repoName));}
-
   });
 }
 
 
-function getLogPendingReviews(repoName, repoBranch, callback){
-  console.log(chalk.magenta('[Downloading Pending Commits]'))
-  var count = 0;
-  var json = {}
-  json.repository = repoName;
-  json.branch = repoBranch;
-  json.pending = [];
-  var funcx = function(json){
-    callback(json);
-  };
-
-  git(repoName).tags((err, update) =>{
-    // if no tag then just all commits are pending review
-    if(!update['latest']){
-      git(repoName).log((err, update) => {
-          json.pending = [];
-          update['all'].forEach(element => {
-
-              json.pending[count] = {};
-              json.pending[count].message = element.message;
-              json.pending[count].hash = element.hash;
-              json.pending[count].timestamp = element.date;
-              json.pending[count].author = element.author_name;
-              count += 1;
-
-          });
-          funcx(json);
-      });
-    }else{
-        git(repoName).tags((err, update) =>{
-            var dict = {};
-            dict[update['latest']+"..HEAD"] = null;
-
-              git(repoName).log(dict, (err, update) =>{
-                json.pending = [];
-                update['all'].forEach(element => {
-
-                    json.pending[count] = {};
-                    json.pending[count].message = element.message;
-                    json.pending[count].hash = element.hash;
-                    json.pending[count].timestamp = element.date;
-                    json.pending[count].author = element.author_name;
-                    count += 1;
-                });
-                funcx(json);
-              });
-        });
-    }
-
-  });
+function getLogPendingReviews(repoName, repoBranch){
+	console.log(chalk.magenta('[Downloading Pending Commits]'));
+	return new Promise(function(resolve, reject) {
+		var funcx = function(json){
+			resolve(json);
+		};
+		gitpending(repoName, repoBranch, funcx);
+	});
 }
 
 
-
-function getLogReleased(repoName, repoBranch, callback){
-  console.log(chalk.magenta('[Downloading Released Commits]'))
-  var count = 0;
-  var json = {}
-  json.repository = repoName;
-  json.branch = repoBranch;
-  json.released = [];
-  var funcx = function(json){
-    callback(json);
-  };
-
-  git(repoName).tags((err, update) =>{
-    if(update['latest']){
-      var dict = {};
-      dict[update['all'][update['all'].length-2]+".."+update['latest']] = null;
-      //console.log(dict);
-      //
-      git(repoName).log((err, update) => {
-          json.released = [];
-          update['all'].forEach(element => {
-
-              json.released[count] = {};
-              json.released[count].message = element.message;
-              json.released[count].hash = element.hash;
-              json.released[count].timestamp = element.date;
-              json.released[count].author = element.author_name;
-              count += 1;
-          });
-          funcx(json);
-      });
-      //
-    }
-  });
+function getLogReleasedReviews(repoName, repoBranch){
+	console.log(chalk.magenta('[Downloading Released Commits]'));
+	return new Promise(function(resolve, reject) {
+		var funcx = function(json){
+		  resolve(json);
+		};
+		gitreleased(repoName, repoBranch, funcx);
+	});
 }
+
 
 // process repos
-function processRepo(repoUrl, repoBranch, callback) {
-  getRepoName(repoUrl, (repoName) => {
-      // does repo already exist?
-      var initializePromise;
-      downloadRepoPromise = downloadRepo(repoUrl, repoBranch, repoName);
-      downloadRepoPromise.then(function(result) {
-        console.log(result);
-        // get branch status
-        git(repoName).status((err, update) => {
-
-            if(!err){
-                // fetch all the remote branch
-                git(repoName).raw(['fetch','--all'], (err, result) => {
-                  if(!err){
-                    // change branch after fetch
-                    changeBranch(repoName, repoBranch, (repoName, repoBranch) => {
-                        git(repoName).pull('origin', repoBranch, (err, result) => {
-
-                            getLogPendingReviews(repoName, repoBranch, (pjson)=>{
-								callback(pjson);
-                            });
-
-							/*
-							getLogReleased(repoName, repoBranch, (json)=>{
-
-							});*/
-
-
-                        });
-                    });
-                    //
-                  }
-                });
-            }else{
-                console.error(chalk.red('[Failed] ' + err));
-                callback();
-            }
-          });
-          //
-      },function(err) {
-        console.log(err);
-        callback();
-      });
-  });
+function processRepo(repoUrl, repoName, repoBranch) {
+	return new Promise(function(resolve, reject) {
+	    // does repo already exist?
+	    downloadRepoPromise = downloadRepo(repoUrl, repoBranch, repoName);
+	    downloadRepoPromise.then(function(result) {
+		     	console.log(result);
+		     	// get branch status
+		     	git(repoName).status((err, update) => {
+		         	if(!err){
+		             	// fetch all the remote branch
+		             	git(repoName).raw(['fetch','--all'], (err, result) => {
+		               	if(!err){
+		                  	// change branch after fetch
+		                  	changeBranch(repoName, repoBranch, (repoName, repoBranch) => {
+		                      	git(repoName).pull('origin', repoBranch, (err, result) => {
+									resolve(chalk.green('[Branch Switched] to '+repoBranch));
+								});
+		                  	});//
+		               	}
+		             	});
+		         	}else{
+					reject(chalk.red('[Failed] ' + err));
+		         	}
+		       });//
+	    },function(err) {
+			reject(chalk.red('[Failed] ' + err));
+	    });
+	});
 }
