@@ -13,6 +13,8 @@ const lineByLine = require("n-readlines");
 const Promise = require("promise");
 const gitpending = require("./gitpending.js");
 const gitreleased = require("./gitreleased.js");
+const datefuncs = require("./datefunc.js");
+const currentTime = new Date();
 
 clear();
 console.log(
@@ -24,8 +26,7 @@ console.log("\n");
 var argv = minimist(process.argv.slice(2));
 const usage = function() {
   const usageText = `
-Usage:
-  gitparser <command> [options]
+Usage: gitparser <command> [options]
 
 Commands:
   help                     print usage
@@ -45,13 +46,25 @@ var filename = argv["repos"];
 var reposList = new Array();
 let line;
 let lineNumber = 0;
-const liner = new lineByLine(filename);
 
+//check if repos.json exists
+if (!fs.existsSync(filename)) {
+  console.log(chalk.red("[File Not Found] " + filename));
+  usage();
+  process.exit(1);
+}
+
+//const liner = new lineByLine(filename);
 var contents = fs.readFileSync(filename);
 var jsonContent = JSON.parse(contents);
 var theJSON = {};
-theJSON.report_run_time = "time";
-theJSON.report_duration = "48";
+theJSON.report_run_time = currentTime.toISOString();
+
+// check for report duration argument
+if (argv["duration"]) {
+  theJSON.report_duration = "48";
+}
+
 theJSON.released = [];
 theJSON.pending_review = [];
 
@@ -113,6 +126,7 @@ var loopArray = function(arr) {
     }
   });
 };
+
 loopArray(jsonContent.repos);
 
 //=============================================

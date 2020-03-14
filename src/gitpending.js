@@ -1,4 +1,5 @@
 const git = require("simple-git");
+const datefuncs = require("./datefunc.js");
 
 module.exports = function(repoName, repoBranch, callback) {
   var count = 0;
@@ -16,7 +17,7 @@ module.exports = function(repoName, repoBranch, callback) {
           json.pending[count] = {};
           json.pending[count].message = element.message;
           json.pending[count].hash = element.hash;
-          json.pending[count].timestamp = element.date;
+          json.pending[count].timestamp = datefuncs.getISO(element.date);
           json.pending[count].author = element.author_name;
           count += 1;
         });
@@ -33,7 +34,7 @@ module.exports = function(repoName, repoBranch, callback) {
             json.pending[count] = {};
             json.pending[count].message = element.message;
             json.pending[count].hash = element.hash;
-            json.pending[count].timestamp = element.date;
+            json.pending[count].timestamp = datefuncs.getISO(element.date);
             json.pending[count].author = element.author_name;
             count += 1;
           });
