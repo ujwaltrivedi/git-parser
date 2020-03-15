@@ -1,6 +1,6 @@
 # git-parser
 
-## Install
+## Install git-parser
 
 ```bash
 
@@ -14,18 +14,25 @@ cat commits.json | jq
 
 ```
 
-## repos.json format
+## Generate and Update SSH Keys to Git
+
+- create `ssh-keygen` and upload public ssh keys to github
+- add ssh private key to your environment `ssh-add ~/.ssh/private_github_key`
+
+## File Format for `repos.json`
+
 ```json
 {
   "repos": [
     {
-      "repo": "https://github.com/ujwaltrivedi/gitparser.git",
+      "repo": "git@github.com:ujwaltrivedi/git-parser.git",
       "branch": "master"
     },
     {
-      "repo": "https://github.com/substack/minimist.git",
+      "repo": "git@github.com:substack/minimist.git",
       "branch": "master"
-    },{
+    },
+    {
       "repo": "https://github.com/redwoodjs/redwood.git",
       "branch": "master"
     }

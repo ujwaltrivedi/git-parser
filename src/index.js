@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+const version = "0.0.1";
 const git = require("simple-git");
 const chalk = require("chalk");
 const clear = require("clear");
@@ -13,29 +14,44 @@ const lineByLine = require("n-readlines");
 const Promise = require("promise");
 const gitpending = require("./gitpending.js");
 const gitreleased = require("./gitreleased.js");
+const gitreleased_duration = require("./gitreleased_duration.js");
 const datefuncs = require("./datefunc.js");
 const currentTime = new Date();
 
-clear();
 console.log(
   chalk.green(figlet.textSync("Gitparser", { horizontalLayout: "full" }))
 );
 console.log("\n");
 //console.log(path.basename(process.cwd()));
 
-var argv = minimist(process.argv.slice(2));
+var argv = minimist(process.argv.slice(2), {
+  "--": true,
+  string: ["repos", "duration"],
+  alias: { h: "help", v: "version" }
+});
 const usage = function() {
   const usageText = `
 Usage: gitparser <command> [options]
 
-Commands:
-  help                     print usage
-
-General Options:
-  --repos <path>           default: repos.json - path to the repos file, one repo URL per line
+Options:
+  -h, --help				print usage
+  -v, --version				get the version
+  --repos <path>			default: repos.json, path to the repos file, one repo URL per line
+  --duration				show released commits for last 48 hours. Must be multiple of 24
   `;
   console.log(chalk.white(usageText));
 };
+
+if (argv["version"]) {
+  console.log(chalk.magenta("gitparser version:" + version));
+  console.log("");
+  process.exit(1);
+}
+
+if (argv["help"]) {
+  usage();
+  process.exit(1);
+}
 
 if (!argv["repos"]) {
   usage();
@@ -57,17 +73,25 @@ if (!fs.existsSync(filename)) {
 //const liner = new lineByLine(filename);
 var contents = fs.readFileSync(filename);
 var jsonContent = JSON.parse(contents);
+var duration = 0;
 var theJSON = {};
 theJSON.report_run_time = currentTime.toISOString();
 
 // check for report duration argument
 if (argv["duration"]) {
-  theJSON.report_duration = "48";
+  if (argv["duration"] % 24) {
+    console.log(
+      chalk.red("[Incorrect Duration] Duration should be multiple of 24")
+    );
+    usage();
+    process.exit(1);
+  }
+  theJSON.report_duration = argv["duration"];
+  duration = argv["duration"];
 }
 
 theJSON.released = [];
 theJSON.pending_review = [];
-
 var pr_repo_count = 0;
 var rr_repo_count = 0;
 
@@ -86,8 +110,18 @@ function customAlert(jsonItem, callback) {
   processRepoPromise.then(
     function(result) {
       console.log(result);
+
       gitPendingPromise = getLogPendingReviews(repoName, jsonItem.branch);
-      gitReleasedPromise = getLogReleasedReviews(repoName, jsonItem.branch);
+
+      if (duration) {
+        gitReleasedPromise = getLogReleasedReviewsDuration(
+          repoName,
+          jsonItem.branch,
+          duration
+        );
+      } else {
+        gitReleasedPromise = getLogReleasedReviews(repoName, jsonItem.branch);
+      }
 
       Promise.all([
         Promise.resolve(gitPendingPromise),
@@ -107,16 +141,12 @@ var loopArray = function(arr) {
     // set x to next item
     x++;
 
-    //console.log(pendingJson);
-    //console.log(releasedJson);
-
     theJSON.pending_review[pr_repo_count] = pendingJson;
     theJSON.released[rr_repo_count] = releasedJson;
     pr_repo_count++;
     rr_repo_count++;
 
     if (x == arr.length) {
-      //console.log(JSON.stringify(theJSON));
       writeJsonToFile(JSON.stringify(theJSON));
     }
 
@@ -195,6 +225,18 @@ function getLogReleasedReviews(repoName, repoBranch) {
       resolve(json);
     };
     gitreleased(repoName, repoBranch, funcx);
+  });
+}
+
+function getLogReleasedReviewsDuration(repoName, repoBranch, duration) {
+  console.log(
+    chalk.magenta("[Downloading Last " + duration + " hrs of Commits]")
+  );
+  return new Promise(function(resolve, reject) {
+    var funcx = function(json) {
+      resolve(json);
+    };
+    gitreleased_duration(repoName, repoBranch, duration, funcx);
   });
 }
 
